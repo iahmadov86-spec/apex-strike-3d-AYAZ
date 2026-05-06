@@ -3822,8 +3822,8 @@ let ap = parseInt(localStorage.getItem('apexAP')||'500'); // Başlangıç 500 AP
 let ownedSkins = JSON.parse(localStorage.getItem('apexSkins')||'["default"]');
 
 // ── VIP System ──
-const VIP_PRICE_TL = 400;   // ₺
- const VIP_DISCOUNT = 0.30;  // %30 desen indirimi
+const VIP_PRICE_TL = 400;   // ₺/ay
+const VIP_DISCOUNT = 0.30;  // %30 desen indirimi
 let isVIP = localStorage.getItem('apexVIP')==='true';
 function saveVIP(){ localStorage.setItem('apexVIP', isVIP?'true':'false'); }
 window.buyVIP=function(){
@@ -4191,26 +4191,28 @@ function renderShop(){
         <div class="vip-card">
           <div class="vip-crown">👑</div>
           <div class="vip-title">VIP AKTİF</div>
-          <div class="vip-sub">Ayrıcalıkların aktif!</div>
+          <div class="vip-sub">₺${VIP_PRICE_TL}/AY &bull; Abonelik aktif</div>
           <ul class="vip-perks">
             <li>Tüm desenlerde <strong>%30 indirim</strong></li>
             <li>VIP rozeti HUD ve shopda görünür</li>
             <li>Gelecekteki VIP özelliklere öncelikli erişim</li>
           </ul>
-          <div class="vip-active-banner">✦ VIP Üyeliğin aktif — Desenler %30 indirimli!</div>
+          <div style="font-size:.68rem;color:#776633;margin-bottom:10px">Her ay otomatik olarak kartından ₺${VIP_PRICE_TL} çekilir. Dilediğinde iptal edebilirsin.</div>
+          <div class="vip-active-banner">✦ VIP Aboneliğin aktif — Desenler %30 indirimli!</div>
         </div>`;
     }else{
       panel.innerHTML=`
         <div class="vip-card">
           <div class="vip-crown">👑</div>
           <div class="vip-title">APEX VIP</div>
-          <div class="vip-sub">Tek seferlik satın al</div>
+          <div class="vip-sub">₺${VIP_PRICE_TL} / AY &bull; Her ay otomatik yenilenir</div>
           <ul class="vip-perks">
             <li>Tüm desenlerde <strong>%30 indirim</strong></li>
             <li>VIP rozeti HUD ve shopda görünür</li>
             <li>Gelecekteki VIP özelliklere öncelikli erişim</li>
           </ul>
-          <button class="vip-buy-btn" onclick="buyVIP()">SATİN AL — ₺${VIP_PRICE_TL}</button>
+          <div style="font-size:.68rem;color:#776633;margin-bottom:14px;line-height:1.6">Abonelik her ay otomatik olarak kartından ₺${VIP_PRICE_TL} olarak çekilir.<br>Dilediğinde iptal edebilirsin.</div>
+          <button class="vip-buy-btn" onclick="buyVIP()">ABONE OL — ₺${VIP_PRICE_TL}/AY</button>
         </div>
         <div style="font-size:.65rem;color:#445;text-align:center;max-width:360px">Simüle edilmiş ödeme — Gerçek para alınmaz.</div>`;
     }
