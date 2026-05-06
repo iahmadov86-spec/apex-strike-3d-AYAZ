@@ -33,6 +33,20 @@ let roundTimer  = null;
 // Score tracking per round
 let roundScores = { A: 0, B: 0 };
 
+// ── Bomb System ──
+const BOMB_SITES = [{id:'A',x:-22,z:22},{id:'B',x:22,z:-22}];
+const BOMB_TIMER  = 40;   // seconds after plant
+const PLANT_GRACE = 3.5;  // site radius — server just trusts client position report
+let bomb = {
+  phase: 'idle',   // idle | carried | planted | defused | exploded
+  carrierId: null,
+  planterTeam: null,
+  planterId: null,
+  siteId: null, x: 0, z: 0,
+  countdown: BOMB_TIMER,
+  tickInterval: null,
+};
+
 // ─── WebSocket Server ────────────────────────────────
 const wss = new WebSocketServer({ port: 8080 });
 
@@ -114,6 +128,34 @@ wss.on('connection', ws => {
         if(id===hostId && !roundActive) startRound();
         break;
 
+      case 'bombPlant': {
+        // Validate: carrier, phase, team
+        if(bomb.phase!=='carried'||bomb.carrierId!==id||p.team!==bomb.planterTeam) break;
+        const site = BOMB_SITES.find(s=>s.id===data.siteId);
+        if(!site) break;
+        bomb.phase    = 'planted';
+        bomb.planterId = id;
+        bomb.siteId   = site.id;
+        bomb.x = site.x; bomb.z = site.z;
+        bomb.countdown = BOMB_TIMER;
+        broadcast({ type:'bombPlanted', siteId:site.id, x:site.x, z:site.z,
+          planterTeam:bomb.planterTeam, planterId:id });
+        console.log(`💣 Bomba Site ${site.id}'de kuruldu (${id})`);
+        startBombCountdown();
+        break;
+      }
+
+      case 'bombDefuse': {
+        // Validate: defender team, bomb planted
+        if(bomb.phase!=='planted'||p.team===bomb.planterTeam) break;
+        if(bomb.tickInterval){ clearInterval(bomb.tickInterval); bomb.tickInterval=null; }
+        bomb.phase = 'defused';
+        broadcast({ type:'bombDefused', defuserId:id });
+        console.log(`✅ Bomba etkisiz: ${id} [Takım ${p.team}]`);
+        endRound('B');
+        break;
+      }
+
       case 'chat':
         const txt=String(data.text||'').slice(0,120);
         broadcast({type:'chat',id,text:txt,team:p.team});
@@ -134,6 +176,39 @@ wss.on('connection', ws => {
 });
 
 // ─── Round Logic ─────────────────────────────────────
+function assignBomb() {
+  // Reset bomb
+  if(bomb.tickInterval){ clearInterval(bomb.tickInterval); bomb.tickInterval=null; }
+  bomb = { phase:'idle', carrierId:null, planterTeam:null, planterId:null,
+    siteId:null, x:0, z:0, countdown:BOMB_TIMER, tickInterval:null };
+
+  // Team A plants, Team B defuses (rotate each round if desired; keep simple for now)
+  const attackers = Object.values(players).filter(p=>p.team==='A');
+  if(attackers.length===0) return; // no attackers — skip bomb
+  const carrier = attackers[Math.floor(Math.random()*attackers.length)];
+  bomb.carrierId   = carrier.id;
+  bomb.planterTeam = 'A';
+  bomb.phase = 'carried';
+  broadcast({ type:'bombAssigned', carrierId:carrier.id, planterTeam:'A' });
+  console.log(`💣 Bomba taşıyıcı: ${carrier.id} [Takım A]`);
+}
+
+function startBombCountdown() {
+  if(bomb.tickInterval) clearInterval(bomb.tickInterval);
+  bomb.tickInterval = setInterval(() => {
+    if(!roundActive){ clearInterval(bomb.tickInterval); return; }
+    bomb.countdown -= 1;
+    broadcast({ type:'bombTick', countdown: bomb.countdown });
+    if(bomb.countdown <= 0) {
+      clearInterval(bomb.tickInterval);
+      bomb.phase = 'exploded';
+      broadcast({ type:'bombExploded' });
+      console.log('💥 Bomba patladı! Takım A kazanıyor.');
+      endRound('A');
+    }
+  }, 1000);
+}
+
 function startRound() {
   roundActive = true;
   roundScores = { A: 0, B: 0 };
@@ -143,6 +218,8 @@ function startRound() {
   });
   broadcast({ type:'roundStart', round });
   console.log(`🏁 Tur ${round} başladı`);
+  // Assign bomb after a short delay
+  setTimeout(()=>{ if(roundActive) assignBomb(); }, 500);
 }
 
 function checkRoundEnd() {
@@ -150,14 +227,27 @@ function checkRoundEnd() {
   const aliveA = alive.filter(p=>p.team==='A').length;
   const aliveB = alive.filter(p=>p.team==='B').length;
 
-  // If one side has no players left (or all dead)
-  if (aliveA === 0 && aliveB >= 0) endRound('B');
-  else if (aliveB === 0 && aliveA >= 0) endRound('A');
+  if(bomb.phase==='planted') {
+    // Bomb is live: only end early if ALL defenders are dead
+    if(aliveB===0) {
+      // No one left to defuse — wait for countdown (already running)
+      // But we can skip the wait if attackers all dead too (rare)
+    }
+    if(aliveA===0 && aliveB===0) { /* let bomb tick */ }
+    return; // bomb controls the round now
+  }
+
+  // Normal elimination round
+  if(aliveA===0 && aliveB>0) endRound('B');
+  else if(aliveB===0 && aliveA>0) endRound('A');
+  else if(aliveA===0 && aliveB===0) endRound('A'); // attackers planted goal is default
 }
 
 function endRound(winnerTeam) {
   if(!roundActive) return;
   roundActive = false;
+  // Clean up bomb countdown
+  if(bomb.tickInterval){ clearInterval(bomb.tickInterval); bomb.tickInterval=null; }
   console.log(`🏆 Tur ${round} bitti — Kazanan: Takım ${winnerTeam}`);
 
   // Score penalties & bonuses

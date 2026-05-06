@@ -25,6 +25,16 @@ canvas{display:block}
 #shf{background:linear-gradient(90deg,#0066ff,#00aaff);box-shadow:0 0 8px #00aaff66;width:100%}
 #grns{font-size:13px;color:#88ff00;margin-top:6px}
 #trps{font-size:13px;color:#ff6600;margin-top:3px;text-shadow:0 0 8px #ff660088}
+/* ── Bomb HUD ── */
+#bomb-carrier-hud{position:absolute;bottom:220px;left:50%;transform:translateX(-50%);display:none;text-align:center;font-size:11px;color:#ff9900;letter-spacing:2px;text-shadow:0 0 10px #ff990099;padding:6px 14px;background:rgba(0,0,0,.55);border:1px solid #ff990044;border-radius:3px}
+#pd-wrap{position:absolute;top:52%;left:50%;transform:translate(-50%,-50%);display:none;text-align:center;z-index:30}
+#pd-label{font-size:11px;letter-spacing:3px;margin-bottom:5px;text-shadow:0 0 8px currentColor}
+#pd-bg{width:280px;height:10px;background:rgba(0,0,0,.7);border:1px solid currentColor;border-radius:2px}
+#pd-fill{height:100%;border-radius:2px;width:0%;transition:width .04s}
+#bomb-hud{position:absolute;top:72px;left:50%;transform:translateX(-50%);display:none;text-align:center;z-index:20;min-width:160px}
+#bomb-hud-label{font-size:10px;color:#ff4444;letter-spacing:3px;margin-bottom:2px}
+#bomb-hud-timer{font-size:56px;font-weight:900;line-height:1;color:#ff4444;text-shadow:0 0 24px #ff4444}
+#bomb-hud-hint{font-size:10px;color:#888;margin-top:4px;letter-spacing:1px}
 /* weapon HUD — neon sci-fi */
 #wh{position:absolute;bottom:60px;right:20px;text-align:right;min-width:260px}
 #wn{font-size:17px;color:#00ffff;font-weight:bold;letter-spacing:2px;text-shadow:0 0 12px #00ffff88}
@@ -421,6 +431,19 @@ canvas{display:block}
     <div class="bw"><div class="bf" id="hpf"></div></div>
     <div id="grns">💣 x3</div>
     <div id="trps">🪤 x2 [X]</div>
+  </div>
+  <!-- Bomb carrier hint -->
+  <div id="bomb-carrier-hud">💣 BOMBA ELİNDE &mdash; Bomb sahasına git</div>
+  <!-- Plant / Defuse progress bar -->
+  <div id="pd-wrap" style="color:#ffd700">
+    <div id="pd-label">KURMA...</div>
+    <div id="pd-bg" style="border-color:#ffd700"><div id="pd-fill" style="background:#ffd700"></div></div>
+  </div>
+  <!-- Bomb countdown -->
+  <div id="bomb-hud">
+    <div id="bomb-hud-label">⚠ BOMBA KURULDU</div>
+    <div id="bomb-hud-timer">40</div>
+    <div id="bomb-hud-hint"></div>
   </div>
   <div id="stam"><div id="stamf"></div></div>
   <div id="wh">
@@ -2157,6 +2180,13 @@ function doScreenShake(mag){screenShakeD=mag;}
 // ══════════════════════════════════════════════
 let ws=null,myId=null,isHost=false,mpMode=false;
 let myTeam=null; // 'A' or 'B'
+
+// ── Bomb plant/defuse system ──
+const BOMB_SITES=[{id:'A',x:-22,z:22},{id:'B',x:22,z:-22}];
+const PLANT_TIME=3,DEFUSE_TIME=5,BOMB_TIMER=40,BOMB_SITE_R=3.5;
+let bombSt={phase:'idle',carrierId:null,planterTeam:null,siteId:null,x:0,z:0,countdown:BOMB_TIMER,plantProg:0,defuseProg:0,mesh:null};
+let bombSiteObjs=[]; // visual markers
+let holdingF=false; // F key hold state tracked per-frame
 let otherPlayers={};
 let sendTimer=0,enemySendT=0;
 let chatOpen=false;
@@ -2265,12 +2295,66 @@ function handleServerMsg(data){
     case 'roundStart':
       // Respawn
       hp=100;shield=60;grens=3;trapMines=2;
+      resetBombState();
       if(document.getElementById('round-result').style.display!=='none'){
         document.getElementById('round-result').style.display='none';
       }
-      showMsg('TUR BAŞLADI!','#00FF88');
+      showMsg('TUR BAŞlADI!','#00FF88');
       if(!gameRunning){gameRunning=true;canvas.requestPointerLock();}
       break;
+    case 'bombAssigned':
+      bombSt.carrierId=data.carrierId;
+      bombSt.planterTeam=data.planterTeam;
+      bombSt.phase='carried';
+      if(data.carrierId===myId){
+        showMsg('💣 BOMBA SENİN ELİNDE! Bomb sahasına götür!','#FF9900');
+      }else if(myTeam===data.planterTeam){
+        showMsg(`💣 Takım arkadaşın bombayı taşıyor!`,'#FF9900');
+      }else{
+        showMsg(`⚠ Düşman bombayı taşıyor! Engel ol!`,'#FF4444');
+      }
+      break;
+    case 'bombPlanted':{
+      bombSt.phase='planted';
+      bombSt.x=data.x;bombSt.z=data.z;
+      bombSt.siteId=data.siteId;
+      bombSt.countdown=BOMB_TIMER;
+      bombSt.planterTeam=data.planterTeam;
+      bombSt.plantProg=0;
+      document.getElementById('pd-wrap').style.display='none';
+      spawnPlantedBomb(data.x,data.z);
+      // Hide beacon of planted site
+      const psite=bombSiteObjs.find(o=>o.site.id===data.siteId);
+      if(psite){psite.pillar.visible=false;psite.top.visible=false;}
+      playExplosion();doScreenShake(2);
+      const byMe=data.planterId===myId;
+      showMsg(`💣 BOMBA Site ${data.siteId}'de KURULDU! ${BOMB_TIMER}s!`,byMe?'#FFD700':'#FF4444');
+      break;}
+    case 'bombTick':
+      bombSt.countdown=data.countdown;
+      break;
+    case 'bombDefused':{
+      const won=myTeam!==bombSt.planterTeam;
+      if(bombSt.mesh){scene.remove(bombSt.mesh);bombSt.mesh=null;}
+      bombSt.phase='defused';
+      document.getElementById('bomb-hud').style.display='none';
+      document.getElementById('pd-wrap').style.display='none';
+      showMsg(won?'✅ BOMBA ETKİSİZ! Takımın KAZANDI!':'❌ Bomba etkisiz! Takım B kazandı.',won?'#00FF88':'#FF4444');
+      break;}
+    case 'bombExploded':{
+      const won=myTeam===bombSt.planterTeam;
+      if(bombSt.mesh){
+        spawnSparks(new THREE.Vector3(bombSt.x,0.1,bombSt.z),100,0xff4400);
+        scene.remove(bombSt.mesh);bombSt.mesh=null;
+      }
+      bombSt.phase='exploded';
+      document.getElementById('bomb-hud').style.display='none';
+      doScreenShake(18);playExplosion();
+      const bdp=Math.hypot(px-bombSt.x,pz-bombSt.z);
+      if(bdp<16){const dmg=120*(1-bdp/16);if(shield>0){const s=Math.min(dmg,shield);shield-=s;hp-=Math.max(0,dmg-s);}else hp-=dmg;
+        document.getElementById('dmgfx').style.background='rgba(255,80,0,.7)';dmgEnd=Date.now()+500;}
+      showMsg(won?'💥 BOMBA PATLADI! Takımın KAZANDI!':'💥 BOMBA PATLADI! Kayıplar çok ağır...',won?'#FFD700':'#FF4444');
+      break;}
     case 'roundEnd':{
       const won=data.winner===myTeam;
       const rr=document.getElementById('round-result');
@@ -2407,7 +2491,8 @@ window.addEventListener('keydown',e=>{
   if(e.code==='Enter'&&chatOpen)sendChat();
   e.preventDefault();
 });
-window.addEventListener('keyup',e=>{K[e.code]=false;});
+window.addEventListener('keyup',e=>{K[e.code]=false;if(e.code==='KeyF')holdingF=false;});
+window.addEventListener('keydown',e=>{if(e.code==='KeyF')holdingF=true;},{capture:true});
 canvas.addEventListener('mousedown',e=>{
   if(e.button===0&&gameRunning&&locked)mdown=true;
   if(e.button===2&&gameRunning&&locked){rmbDown=true;ads=true;document.getElementById('adsind').style.display='block';}
@@ -3171,6 +3256,172 @@ function updEBullets(dt){
   }
 }
 
+// ──────────────────────────────────────────────────────
+//  BOMB PLANT / DEFUSE
+// ──────────────────────────────────────────────────────
+function buildBombSites(){
+  BOMB_SITES.forEach(site=>{
+    // Glowing floor ring
+    const ring=new THREE.Mesh(
+      new THREE.RingGeometry(3,3.5,32),
+      new THREE.MeshStandardMaterial({color:0xff6600,emissive:0xff4400,emissiveIntensity:2,transparent:true,opacity:.7,side:THREE.DoubleSide})
+    );
+    ring.rotation.x=-Math.PI/2;ring.position.set(site.x,.03,site.z);
+    scene.add(ring);
+    // Inner fill
+    const fill=new THREE.Mesh(
+      new THREE.CircleGeometry(3,32),
+      new THREE.MeshStandardMaterial({color:0xff6600,emissive:0xff3300,emissiveIntensity:1,transparent:true,opacity:.18,side:THREE.DoubleSide})
+    );
+    fill.rotation.x=-Math.PI/2;fill.position.set(site.x,.02,site.z);
+    scene.add(fill);
+    // Beacon pillar
+    const pillar=new THREE.Mesh(
+      new THREE.CylinderGeometry(.05,.05,3,6),
+      new THREE.MeshStandardMaterial({color:0xff6600,emissive:0xff4400,emissiveIntensity:4,transparent:true,opacity:.8})
+    );
+    pillar.position.set(site.x,1.5,site.z);scene.add(pillar);
+    // Top diamond
+    const top=new THREE.Mesh(
+      new THREE.OctahedronGeometry(.22),
+      new THREE.MeshStandardMaterial({color:0xffaa00,emissive:0xff6600,emissiveIntensity:5})
+    );
+    top.position.set(site.x,3.2,site.z);scene.add(top);
+    bombSiteObjs.push({ring,fill,pillar,top,fillMat:fill.material,ringMat:ring.material,site});
+  });
+}
+
+function resetBombState(){
+  if(bombSt.mesh){scene.remove(bombSt.mesh);bombSt.mesh=null;}
+  bombSt={phase:'idle',carrierId:null,planterTeam:null,siteId:null,x:0,z:0,
+    countdown:BOMB_TIMER,plantProg:0,defuseProg:0,mesh:null};
+  document.getElementById('bomb-hud').style.display='none';
+  document.getElementById('pd-wrap').style.display='none';
+  document.getElementById('bomb-carrier-hud').style.display='none';
+  bombSiteObjs.forEach(o=>{o.pillar.visible=true;o.top.visible=true;});
+}
+
+function spawnPlantedBomb(x,z){
+  if(bombSt.mesh){scene.remove(bombSt.mesh);}
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.BoxGeometry(.32,.14,.52),new THREE.MeshStandardMaterial({color:0x1a1a1a,roughness:.8,metalness:.3}));
+  const led=new THREE.Mesh(new THREE.SphereGeometry(.06,8,6),new THREE.MeshStandardMaterial({color:0xff1100,emissive:0xff1100,emissiveIntensity:5}));
+  led.position.y=.1;led.name='led';
+  const ant=new THREE.Mesh(new THREE.CylinderGeometry(.012,.012,.35,4),new THREE.MeshStandardMaterial({color:0x333333}));
+  ant.position.set(.06,.24,0);
+  g.add(body);g.add(led);g.add(ant);
+  g.position.set(x,.1,z);
+  scene.add(g);
+  bombSt.mesh=g;
+}
+
+function wsSend(obj){if(ws&&ws.readyState===1)ws.send(JSON.stringify(obj));}
+
+function updBomb(dt){
+  if(!mpMode)return;
+  // Animate site beacons
+  bombSiteObjs.forEach(({top,ringMat})=>{
+    top.rotation.y+=dt*1.5;
+    if(bombSt.phase==='idle'||bombSt.phase==='carried'){
+      ringMat.emissiveIntensity=1.5+1.5*Math.sin(gt*2);
+    }
+  });
+  // Animate planted bomb LED
+  if(bombSt.mesh){
+    const led=bombSt.mesh.getObjectByName('led');
+    if(led){
+      const rate=bombSt.countdown<10?8:bombSt.countdown<20?4:1.5;
+      led.material.emissiveIntensity=3+3*Math.abs(Math.sin(gt*rate*Math.PI));
+    }
+    bombSt.mesh.rotation.y+=dt*.5;
+  }
+
+  const carrying=bombSt.carrierId===myId;
+  const planted=bombSt.phase==='planted';
+  const carrierHud=document.getElementById('bomb-carrier-hud');
+  const pdWrap=document.getElementById('pd-wrap');
+  const pdLabel=document.getElementById('pd-label');
+  const pdFill=document.getElementById('pd-fill');
+  const pdBg=document.getElementById('pd-bg');
+
+  // ─ Carrier HUD & plant logic ─
+  if(carrying&&!planted){
+    const nearSite=BOMB_SITES.find(s=>Math.hypot(px-s.x,pz-s.z)<BOMB_SITE_R);
+    carrierHud.style.display='block';
+    if(nearSite){
+      carrierHud.textContent=`💣 BOMBA ELİNDE — [F TUT] Site ${nearSite.id}'de kur`;
+      if(holdingF){
+        bombSt.plantProg=Math.min(1,bombSt.plantProg+dt/PLANT_TIME);
+        pdWrap.style.display='block';
+        pdWrap.style.color='#ffd700';
+        pdBg.style.borderColor='#ffd700';
+        pdLabel.textContent=`Site ${nearSite.id} KURMA... ${Math.floor(bombSt.plantProg*100)}%`;
+        pdFill.style.background='linear-gradient(90deg,#ff8800,#ffd700)';
+        pdFill.style.width=(bombSt.plantProg*100)+'%';
+        if(bombSt.plantProg>=1){
+          wsSend({type:'bombPlant',siteId:nearSite.id,x:nearSite.x,z:nearSite.z});
+          bombSt.plantProg=0;
+        }
+      }else{
+        bombSt.plantProg=Math.max(0,bombSt.plantProg-dt*0.8);
+        if(bombSt.plantProg<=0)pdWrap.style.display='none';
+        else pdFill.style.width=(bombSt.plantProg*100)+'%';
+      }
+    }else{
+      const closest=BOMB_SITES.map(s=>({s,d:Math.hypot(px-s.x,pz-s.z)})).sort((a,b)=>a.d-b.d)[0];
+      carrierHud.textContent=`💣 BOMBA ELİNDE — Site ${closest.s.id}'ye git (${Math.ceil(closest.d)}m)`;
+      if(bombSt.plantProg>0){bombSt.plantProg=0;pdWrap.style.display='none';}
+    }
+  }else if(!carrying){
+    carrierHud.style.display='none';
+  }
+
+  // ─ Defuse logic ─
+  if(planted&&myTeam!==bombSt.planterTeam){
+    const nearBomb=Math.hypot(px-bombSt.x,pz-bombSt.z)<2.2;
+    if(nearBomb&&holdingF){
+      bombSt.defuseProg=Math.min(1,bombSt.defuseProg+dt/DEFUSE_TIME);
+      pdWrap.style.display='block';
+      pdWrap.style.color='#00ccff';
+      pdBg.style.borderColor='#00ccff';
+      pdLabel.textContent=`ETKİSİZ HALE GETİRİLİYOR... ${Math.floor(bombSt.defuseProg*100)}%`;
+      pdFill.style.background='linear-gradient(90deg,#0066ff,#00ccff)';
+      pdFill.style.width=(bombSt.defuseProg*100)+'%';
+      if(bombSt.defuseProg>=1){
+        wsSend({type:'bombDefuse'});
+        bombSt.defuseProg=0;
+      }
+    }else{
+      bombSt.defuseProg=Math.max(0,bombSt.defuseProg-dt*0.6);
+      if(bombSt.defuseProg<=0)pdWrap.style.display='none';
+      else pdFill.style.width=(bombSt.defuseProg*100)+'%';
+    }
+  }
+
+  // ─ Countdown HUD ─
+  const hudEl=document.getElementById('bomb-hud');
+  if(planted){
+    hudEl.style.display='block';
+    const secs=Math.ceil(bombSt.countdown);
+    const timerEl=document.getElementById('bomb-hud-timer');
+    timerEl.textContent=secs<=0?'0':secs;
+    const col=secs<=10?'#ff2200':secs<=20?'#ff8800':'#ff4444';
+    timerEl.style.color=col;timerEl.style.textShadow=`0 0 24px ${col}`;
+    document.getElementById('bomb-hud-label').style.color=col;
+    const hintEl=document.getElementById('bomb-hud-hint');
+    if(myTeam!==bombSt.planterTeam){
+      const near=Math.hypot(px-bombSt.x,pz-bombSt.z)<2.2;
+      hintEl.textContent=near?'[F TUT] ETKİSİZ HALE GETİR':'Bombaya yaklaş → F tut';
+      hintEl.style.color=near?'#00ccff':'#aaa';
+    }else{
+      hintEl.textContent='Bombayı koru!';
+      hintEl.style.color='#ff8800';
+    }
+  }else if(bombSt.phase!=='planted'){
+    hudEl.style.display='none';
+  }
+}
+
 function updTraps(dt){
   for(let i=trapList.length-1;i>=0;i--){
     const t=trapList[i];
@@ -3886,7 +4137,7 @@ function loop(ts){
     updOtherPlayers(dt);
     updRoundResult(dt);
     updEBullets(dt);
-    updGrenades(dt);updTraps(dt);updSparks(dt);updCasings(dt);updSmoke(dt);updPickups(dt);updWave();updHUD();
+    updGrenades(dt);updTraps(dt);updBomb(dt);updSparks(dt);updCasings(dt);updSmoke(dt);updPickups(dt);updWave();updHUD();
     updEnemyHealthBars();
     updNameTags();
     if(audioCtx&&!ambientStarted)startAmbient();
@@ -3906,6 +4157,7 @@ function loop(ts){
 }
 
 buildMap();
+buildBombSites();
 buildWpnMesh('pistol');
 // Initialize post-processing
 composer=new THREE.EffectComposer(renderer);
