@@ -1,0 +1,33 @@
+== KISA AÇIKLAMA ==
+Three.js ile geliştirilmiş tarayıcı tabanlı 3D FPS oyunu. 8 silah, 5 düşman türü, CS:GO tarzı bomba modu ve VIP sistemi!
+
+== UZUN AÇIKLAMA ==
+🔫 APEX STRIKE 3D, Three.js motoru üzerine inşa edilmiş aksiyon dolu bir birinci şahıs nişancı oyunudur.
+
+## 🎮 Oynanış
+- 8 Silah: Tabanca, SMG, AR, Pompalı, Keskin Nişancı, Bıçak, AK-47, M416
+- 5 Düşman Türü: Grunt, Asker, Ağır, Nişancı, Elite — Kapak/Kuşatma yapay zekası
+- Sonsuz Dalga Sistemi — her dalga zorlaşır
+- Kafa Vuruşu Sistemi — 2.2× hasar + özel efekt
+
+## 💣 Bomba Modu (Çok Oyunculu)
+CS:GO tarzı bomba kur/etkisiz hale getir modu:
+- Takım A Site A veya B'ye bomba kurar (F tuşu, 3 sn)
+- Takım B bombayı etkisiz hale getirir (F tuşu, 5 sn)
+- 40 saniyelik geri sayım — gerilim doruğa çıkıyor!
+
+## 🌐 Çok Oyunculu
+- WebSocket tabanlı 7v7 Takım Modu
+- Gerçek zamanlı oyuncu konumları ve isim etiketleri
+- 5 turluk maç sistemi
+
+## 👑 VIP Sistemi
+- Aylık ₺400 VIP aboneliği
+- Tüm desenlerde %30 indirim
+- Özel VIP rozeti
+
+## 🎨 Grafikler
+- ACESFilmic Ton Haritalama
+- UnrealBloom efekti
+- Atmosferik toz parçacıkları
+- Sabah skybox — gradyan gökyüzü, güneş diski

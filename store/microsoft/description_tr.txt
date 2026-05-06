@@ -1,0 +1,8 @@
+Three.js motoru ile yapılmış tarayıcı tabanlı 3D FPS oyunu. 8 silah, 5 düşman türü, CS:GO tarzı bomba modu, tuzak bombası ve VIP sistemi!
+
+8 Silah: Tabanca, SMG, AR, Pompalı, Keskin Nişancı, Bıçak, AK-47, M416
+5 Düşman Türü: Kapak/Kuşatma yapay zekası ile Grunt, Asker, Ağır, Nişancı, Elite
+Bomba Modu: CS:GO tarzı kur/etkisiz hale getir — 40 saniyelik gerilim
+Tuzak Bombası: X tuşu ile yere yerleştir, yaklaşan düşmanlar tetiklesin
+VIP Sistemi: Aylık abonelik ile desenlerde %30 indirim
+Çok Oyunculu: WebSocket tabanlı 7v7 takım modu

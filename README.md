@@ -67,19 +67,61 @@ A browser-based 3D FPS game built with Three.js. No install required — just op
 | `B` | Shop |
 | `T` | Chat (MP) |
 
-## 🚀 Play
+## 🚀 Oyna
 
-Open `index.html` directly in browser — no build step.
+`index.html` dosyasını tarayıcıda aç — build gerekmez.
 
-Or run multiplayer server:
+Ya da çok oyunculu sunucu:
 ```bash
 npm install
 node server.js
 ```
-Then open `http://localhost:3000`
+Sonra `http://localhost:8765` adresini aç.
 
-## 🛠️ Tech Stack
+---
+
+## 🖥️ Masaüstü Uygulama (Electron)
+
+```bash
+npm install
+npm start          # Electron ile çalıştır
+```
+
+### Build
+```bash
+npm run build:win    # Windows installer (.exe) + Microsoft Store (.appx)
+npm run build:mac    # macOS (.dmg)
+npm run build:linux  # Linux (.AppImage)
+npm run build:store  # Yalnızca Microsoft Store (.appx)
+npm run build:steam  # Yalnızca Steam installer (.exe)
+```
+Build çıktısı `dist/` klasörüne gelir.
+
+---
+
+## 🏪 Mağaza Gönderimi
+
+### 🏠 Microsoft Store
+1. [Partner Center](https://partner.microsoft.com/) hesabı aç ($19 bireysel)
+2. `npm run build:store` → `dist/*.appx` oluştur
+3. Partner Center'a yükle ve mağaza bilgilerini doldur
+4. Detaylı rehber: [`store/microsoft/README.md`](store/microsoft/README.md)
+
+### 🎮 Steam
+1. [Steamworks](https://partner.steamgames.com/) hesabı aç ($100 Steam Direct)
+2. `npm run build:steam` → `dist/*.exe` oluştur
+3. SteamCMD ile depoya yükle
+4. Detaylı rehber: [`store/steam/README.md`](store/steam/README.md)
+
+> ⚠️ İkon dosyalarını build öncesinde `assets/icons/` klasörüne ekle.
+> Detay: [`assets/icons/README.md`](assets/icons/README.md)
+
+---
+
+## 🛠️ Teknoloji
 - [Three.js r134](https://threejs.org/)
 - Web Audio API (procedural sounds)
 - EffectComposer + UnrealBloomPass
 - WebSocket (Node.js server)
+- Electron 29 (masaüstü sarmalayıcı)
+- electron-builder (Steam / Microsoft Store build)

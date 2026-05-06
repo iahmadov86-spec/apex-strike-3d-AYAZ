@@ -1,0 +1,75 @@
+{
+  "appId": "com.apexstrike3d.game",
+  "productName": "Apex Strike 3D",
+  "copyright": "Copyright © 2025 iahmadov86-spec",
+  "directories": {
+    "output": "dist",
+    "buildResources": "assets/build"
+  },
+  "files": [
+    "electron/**/*",
+    "index.html",
+    "server.js",
+    "package.json",
+    "!node_modules/.cache",
+    "!dist"
+  ],
+  "extraResources": [
+    { "from": "assets/icons", "to": "icons" }
+  ],
+
+  "win": {
+    "target": [
+      { "target": "nsis",  "arch": ["x64"] },
+      { "target": "appx",  "arch": ["x64"] }
+    ],
+    "icon": "assets/icons/icon.ico",
+    "requestedExecutionLevel": "asInvoker",
+    "publisherName": "iahmadov86-spec"
+  },
+
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "Apex Strike 3D",
+    "installerIcon": "assets/icons/icon.ico",
+    "uninstallerIcon": "assets/icons/icon.ico",
+    "license": "LICENSE"
+  },
+
+  "appx": {
+    "applicationId": "ApexStrike3D",
+    "backgroundColor": "#000000",
+    "displayName": "Apex Strike 3D",
+    "identityName": "ApexStrike3D",
+    "publisher": "CN=iahmadov86-spec",
+    "publisherDisplayName": "iahmadov86-spec",
+    "languages": ["tr-TR", "en-US"],
+    "showNameOnTiles": true
+  },
+
+  "mac": {
+    "target": [
+      { "target": "dmg",  "arch": ["x64", "arm64"] },
+      { "target": "zip",  "arch": ["x64", "arm64"] }
+    ],
+    "icon": "assets/icons/icon.icns",
+    "category": "public.app-category.games",
+    "hardenedRuntime": true,
+    "gatekeeperAssess": false
+  },
+
+  "linux": {
+    "target": ["AppImage", "deb", "rpm"],
+    "icon": "assets/icons",
+    "category": "Game"
+  },
+
+  "publish": {
+    "provider": "github",
+    "owner": "iahmadov86-spec",
+    "repo": "apex-strike-3d-AYAZ"
+  }
+}

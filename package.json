@@ -1,5 +1,30 @@
 {
+  "name": "apex-strike-3d",
+  "productName": "Apex Strike 3D",
+  "version": "1.0.0",
+  "description": "Browser-based 3D FPS game built with Three.js — 8 weapons, 5 enemy types, bomb plant/defuse, VIP system.",
+  "main": "electron/main.js",
+  "author": {
+    "name": "iahmadov86-spec",
+    "email": "contact@apexstrike3d.com"
+  },
+  "license": "MIT",
+  "scripts": {
+    "start":        "electron .",
+    "dev":          "node server.js",
+    "build":        "electron-builder build --config electron-builder.json",
+    "build:win":    "electron-builder build --win --config electron-builder.json",
+    "build:mac":    "electron-builder build --mac --config electron-builder.json",
+    "build:linux":  "electron-builder build --linux --config electron-builder.json",
+    "build:store":  "electron-builder build --win appx --config electron-builder.json",
+    "build:steam":  "electron-builder build --win nsis --config electron-builder.json",
+    "postinstall":  "electron-builder install-app-deps"
+  },
   "dependencies": {
     "ws": "^8.20.0"
+  },
+  "devDependencies": {
+    "electron": "^29.0.0",
+    "electron-builder": "^24.0.0"
   }
 }
