@@ -35,6 +35,14 @@ canvas{display:block}
 #bomb-hud-label{font-size:10px;color:#ff4444;letter-spacing:3px;margin-bottom:2px}
 #bomb-hud-timer{font-size:56px;font-weight:900;line-height:1;color:#ff4444;text-shadow:0 0 24px #ff4444}
 #bomb-hud-hint{font-size:10px;color:#888;margin-top:4px;letter-spacing:1px}
+/* Pause menu */
+#pause-menu{position:fixed;inset:0;background:rgba(0,0,0,.82);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:98;gap:18px}
+#pause-menu h2{font-size:2.4rem;font-weight:900;letter-spacing:8px;color:#00d4ff;text-shadow:0 0 20px #00d4ff;margin-bottom:10px}
+#pause-menu button{width:240px;padding:14px 0;font-size:1rem;font-weight:700;letter-spacing:3px;border:none;border-radius:3px;cursor:pointer;transition:.15s}
+.pbtn-resume{background:#00d4ff22;border:1px solid #00d4ff !important;color:#00d4ff}
+.pbtn-resume:hover{background:#00d4ff44}
+.pbtn-menu{background:#ff444422;border:1px solid #ff4444 !important;color:#ff4444;margin-top:6px}
+.pbtn-menu:hover{background:#ff444444}
 /* weapon HUD — neon sci-fi */
 #wh{position:absolute;bottom:60px;right:20px;text-align:right;min-width:260px}
 #wn{font-size:17px;color:#00ffff;font-weight:bold;letter-spacing:2px;text-shadow:0 0 12px #00ffff88}
@@ -438,6 +446,12 @@ canvas{display:block}
   <div id="pd-wrap" style="color:#ffd700">
     <div id="pd-label">KURMA...</div>
     <div id="pd-bg" style="border-color:#ffd700"><div id="pd-fill" style="background:#ffd700"></div></div>
+  </div>
+  <!-- Pause menu -->
+  <div id="pause-menu">
+    <h2>[ DURAKLAT ]</h2>
+    <button class="pbtn-resume" onclick="resumeGame()">▶ DEVAM ET</button>
+    <button class="pbtn-menu" onclick="returnToMenu()">⏹ ANA MENÜ</button>
   </div>
   <!-- Bomb countdown -->
   <div id="bomb-hud">
@@ -2487,7 +2501,8 @@ window.addEventListener('keydown',e=>{
   if(e.code==='KeyI'&&!inspecting)startInspect();
   if(e.code==='KeyC'){crouching=!crouching;if(crouching&&(K.ShiftLeft||K.ShiftRight))crouching=false;}
   if(e.code==='KeyT'&&mpMode&&!chatOpen){e.stopPropagation();openChat();}
-  if(e.code==='Escape'&&chatOpen)closeChat();
+  if(e.code==='Escape'&&chatOpen){closeChat();return;}
+  if(e.code==='Escape'&&gameRunning){togglePause();return;}
   if(e.code==='Enter'&&chatOpen)sendChat();
   e.preventDefault();
 });
@@ -3318,7 +3333,7 @@ function spawnPlantedBomb(x,z){
 function wsSend(obj){if(ws&&ws.readyState===1)ws.send(JSON.stringify(obj));}
 
 function updBomb(dt){
-  if(!mpMode)return;
+  if(!mpMode && bombSt.phase==='idle') return; // solo: skip until bomb assigned
   // Animate site beacons
   bombSiteObjs.forEach(({top,ringMat})=>{
     top.rotation.y+=dt*1.5;
@@ -3336,7 +3351,7 @@ function updBomb(dt){
     bombSt.mesh.rotation.y+=dt*.5;
   }
 
-  const carrying=bombSt.carrierId===myId;
+  const carrying=bombSt.carrierId!=null&&(mpMode?bombSt.carrierId===myId:bombSt.phase==='carried'&&!mpMode);
   const planted=bombSt.phase==='planted';
   const carrierHud=document.getElementById('bomb-carrier-hud');
   const pdWrap=document.getElementById('pd-wrap');
@@ -3359,8 +3374,21 @@ function updBomb(dt){
         pdFill.style.background='linear-gradient(90deg,#ff8800,#ffd700)';
         pdFill.style.width=(bombSt.plantProg*100)+'%';
         if(bombSt.plantProg>=1){
-          wsSend({type:'bombPlant',siteId:nearSite.id,x:nearSite.x,z:nearSite.z});
           bombSt.plantProg=0;
+          if(mpMode){
+            wsSend({type:'bombPlant',siteId:nearSite.id,x:nearSite.x,z:nearSite.z});
+          }else{
+            // Solo: handle locally
+            bombSt.phase='planted';bombSt.x=nearSite.x;bombSt.z=nearSite.z;
+            bombSt.siteId=nearSite.id;bombSt.countdown=BOMB_TIMER;
+            bombSt.planterTeam='A';
+            const ps=bombSiteObjs.find(o=>o.site.id===nearSite.id);
+            if(ps){ps.pillar.visible=false;ps.top.visible=false;}
+            spawnPlantedBomb(nearSite.x,nearSite.z);
+            document.getElementById('pd-wrap').style.display='none';
+            playExplosion();doScreenShake(2);
+            showMsg(`💣 BOMBA Site ${nearSite.id}'de KURULDU! ${BOMB_TIMER}s!`,'#FFD700');
+          }
         }
       }else{
         bombSt.plantProg=Math.max(0,bombSt.plantProg-dt*0.8);
@@ -3376,8 +3404,33 @@ function updBomb(dt){
     carrierHud.style.display='none';
   }
 
+  // ─ Solo: countdown tick ─
+  if(!mpMode&&planted){
+    bombSt.countdown-=dt;
+    if(bombSt.countdown<=0){
+      // Explode!
+      if(bombSt.mesh){
+        spawnSparks(new THREE.Vector3(bombSt.x,0.1,bombSt.z),100,0xff4400);
+        scene.remove(bombSt.mesh);bombSt.mesh=null;
+      }
+      bombSt.phase='exploded';
+      doScreenShake(18);playExplosion();
+      document.getElementById('bomb-hud').style.display='none';
+      showMsg('💥 BOMBA PATLADI! Etkisiz hale getiremedin!','#FF4444');
+      pscore=Math.max(0,pscore-500);
+      resetBombState();
+      // Re-assign bomb after 5s
+      setTimeout(()=>{
+        if(gameRunning&&!mpMode){
+          bombSt.carrierId='__solo__';bombSt.planterTeam='A';bombSt.phase='carried';
+          showMsg('💣 Yeni bomba! F tut → site kurdu.','#FF9900');
+        }
+      },5000);
+    }
+  }
+
   // ─ Defuse logic ─
-  if(planted&&myTeam!==bombSt.planterTeam){
+  if(planted&&(mpMode?myTeam!==bombSt.planterTeam:true)){
     const nearBomb=Math.hypot(px-bombSt.x,pz-bombSt.z)<2.2;
     if(nearBomb&&holdingF){
       bombSt.defuseProg=Math.min(1,bombSt.defuseProg+dt/DEFUSE_TIME);
@@ -3388,8 +3441,24 @@ function updBomb(dt){
       pdFill.style.background='linear-gradient(90deg,#0066ff,#00ccff)';
       pdFill.style.width=(bombSt.defuseProg*100)+'%';
       if(bombSt.defuseProg>=1){
-        wsSend({type:'bombDefuse'});
         bombSt.defuseProg=0;
+        if(mpMode){
+          wsSend({type:'bombDefuse'});
+        }else{
+          // Solo defuse
+          if(bombSt.mesh){scene.remove(bombSt.mesh);bombSt.mesh=null;}
+          bombSt.phase='defused';
+          document.getElementById('bomb-hud').style.display='none';
+          document.getElementById('pd-wrap').style.display='none';
+          pscore+=500;
+          showMsg('✅ BOMBA ETKİSİZ! +500 PUAN','#00FF88');
+          setTimeout(()=>{
+            if(gameRunning&&!mpMode){
+              bombSt.carrierId='__solo__';bombSt.planterTeam='A';bombSt.phase='carried';
+              showMsg('💣 Yeni bomba!','#FF9900');
+            }
+          },8000);
+        }
       }
     }else{
       bombSt.defuseProg=Math.max(0,bombSt.defuseProg-dt*0.6);
@@ -3409,7 +3478,8 @@ function updBomb(dt){
     timerEl.style.color=col;timerEl.style.textShadow=`0 0 24px ${col}`;
     document.getElementById('bomb-hud-label').style.color=col;
     const hintEl=document.getElementById('bomb-hud-hint');
-    if(myTeam!==bombSt.planterTeam){
+    const isDefender=!mpMode||(myTeam!==bombSt.planterTeam);
+    if(isDefender){
       const near=Math.hypot(px-bombSt.x,pz-bombSt.z)<2.2;
       hintEl.textContent=near?'[F TUT] ETKİSİZ HALE GETİR':'Bombaya yaklaş → F tut';
       hintEl.style.color=near?'#00ccff':'#aaa';
@@ -3675,6 +3745,39 @@ function drawMinimap(){
 // ══════════════════════════════════════════════
 //  GAME FLOW
 // ══════════════════════════════════════════════
+let paused=false;
+function togglePause(){
+  if(paused)resumeGame();else pauseGame();
+}
+function pauseGame(){
+  paused=true;
+  gameRunning=false;
+  if(document.pointerLockElement)document.exitPointerLock();
+  document.getElementById('pause-menu').style.display='flex';
+}
+function resumeGame(){
+  paused=false;
+  gameRunning=true;
+  document.getElementById('pause-menu').style.display='none';
+  canvas.requestPointerLock();
+}
+function returnToMenu(){
+  paused=false;
+  gameRunning=false;
+  mpMode=false;
+  if(ws){ws.close();ws=null;}
+  if(document.pointerLockElement)document.exitPointerLock();
+  document.getElementById('pause-menu').style.display='none';
+  document.getElementById('de').style.display='none';
+  document.getElementById('aimlock').style.display='none';
+  document.getElementById('name-bar').style.display='none';
+  document.getElementById('friend-btn').style.display='none';
+  resetBombState();
+  clearAll();
+  document.getElementById('ov').style.display='flex';
+  showPage('home');
+}
+
 function gameOver(){
   gameRunning=false;mdown=false;
   if(document.pointerLockElement)document.exitPointerLock();
@@ -4122,6 +4225,13 @@ window.startGame=function(skipOverlay){
   gameRunning=true;
   initAudio();
   canvas.requestPointerLock();
+  // Solo bomb init
+  if(!mpMode){
+    setTimeout(()=>{
+      bombSt.carrierId='__solo__';bombSt.planterTeam='A';bombSt.phase='carried';
+      showMsg('💣 Bomba elinde! Site A veya B\'ye git → F tut kur','#FF9900');
+    },3000);
+  }
 };
 
 // ══════════════════════════════════════════════
