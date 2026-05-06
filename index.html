@@ -249,6 +249,22 @@ canvas{display:block}
 }
 .sitem .sprice.free{color:#00ff88}
 .sitem .sowned{font-size:.65rem;color:#00ff88;margin-top:4px}
+.sitem .vip-badge{position:absolute;top:5px;right:5px;font-size:.55rem;background:linear-gradient(135deg,#ffd700,#ff8c00);color:#000;font-weight:900;padding:1px 5px;border-radius:2px;letter-spacing:1px}
+.sitem .old-price{font-size:.65rem;color:#556;text-decoration:line-through;margin-bottom:1px}
+/* VIP tab */
+#vip-panel{display:flex;flex-direction:column;align-items:center;gap:14px;width:100%;padding:0 20px;max-width:480px;margin:0 auto}
+.vip-card{background:linear-gradient(135deg,rgba(40,25,0,.9),rgba(80,50,0,.8));border:2px solid #ffd700;border-radius:8px;padding:22px 28px;text-align:center;width:100%;box-shadow:0 0 24px #ffd70044}
+.vip-crown{font-size:3rem;margin-bottom:8px}
+.vip-title{font-size:1.5rem;font-weight:900;letter-spacing:6px;color:#ffd700;text-shadow:0 0 16px #ffd700;margin-bottom:6px}
+.vip-sub{font-size:.72rem;color:#aa8800;letter-spacing:2px;margin-bottom:14px}
+.vip-perks{list-style:none;text-align:left;margin-bottom:18px;display:flex;flex-direction:column;gap:7px}
+.vip-perks li{font-size:.78rem;color:#ffe066;padding-left:8px}
+.vip-perks li::before{content:"✦ "}
+.vip-buy-btn{background:linear-gradient(135deg,#ffd700,#ff8c00);color:#000;border:none;font-weight:900;font-size:1rem;letter-spacing:3px;padding:13px 32px;border-radius:4px;cursor:pointer;transition:.15s;font-family:'Courier New',monospace}
+.vip-buy-btn:hover{transform:scale(1.04);box-shadow:0 0 20px #ffd70088}
+.vip-buy-btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.vip-active-banner{background:linear-gradient(135deg,#1a1000,#2a1800);border:2px solid #ffd700;border-radius:6px;padding:18px 24px;text-align:center;width:100%;font-size:.85rem;color:#ffd700}
+#vip-hud-badge{position:absolute;top:42px;right:180px;font-size:.65rem;font-weight:900;letter-spacing:2px;color:#000;background:linear-gradient(135deg,#ffd700,#ff8c00);padding:3px 10px;border-radius:2px;display:none;z-index:11}
 #shop-close{
   margin-top:16px;background:transparent;border:1px solid #ff4444;
   color:#ff4444;padding:8px 30px;font-family:'Courier New',monospace;
@@ -420,6 +436,7 @@ canvas{display:block}
     <button class="stab" onclick="shopTab('ammo')">MERMİ</button>
     <button class="stab" onclick="shopTab('gear')">EKİPMAN</button>
     <button class="stab" onclick="shopTab('skins')">DESEN</button>
+    <button class="stab" id="vip-tab-btn" onclick="shopTab('vip')" style="background:linear-gradient(135deg,#3a2800,#5a4000);border-color:#ffd700;color:#ffd700">✦ VİP</button>
   </div>
   <div id="shop-grid"></div>
   <div id="shop-msg"></div>
@@ -440,6 +457,8 @@ canvas{display:block}
     <div id="grns">💣 x3</div>
     <div id="trps">🪤 x2 [X]</div>
   </div>
+  <!-- VIP badge in HUD -->
+  <div id="vip-hud-badge">✦ VİP</div>
   <!-- Bomb carrier hint -->
   <div id="bomb-carrier-hud">💣 BOMBA ELİNDE &mdash; Bomb sahasına git</div>
   <!-- Plant / Defuse progress bar -->
@@ -3801,6 +3820,34 @@ function clearAll(){
 // ══════════════════════════════════════════════
 let ap = parseInt(localStorage.getItem('apexAP')||'500'); // Başlangıç 500 AP
 let ownedSkins = JSON.parse(localStorage.getItem('apexSkins')||'["default"]');
+
+// ── VIP System ──
+const VIP_PRICE_TL = 400;   // ₺
+ const VIP_DISCOUNT = 0.30;  // %30 desen indirimi
+let isVIP = localStorage.getItem('apexVIP')==='true';
+function saveVIP(){ localStorage.setItem('apexVIP', isVIP?'true':'false'); }
+window.buyVIP=function(){
+  if(isVIP)return;
+  // Simulated payment flow
+  const btn=document.querySelector('.vip-buy-btn');
+  if(btn){btn.disabled=true;btn.textContent='İşleniyor...';}
+  setTimeout(()=>{
+    isVIP=true;saveVIP();
+    initVIPBadge();
+    const msg=document.getElementById('shop-msg');
+    msg.style.color='#ffd700';
+    msg.textContent='✦ VIP aktif! Tum desenler %30 indirimli!';
+    renderShop();
+    showMsg('👑 APEX VIP AKTİF! Desenler %30 indirimli','#FFD700');
+  },800);
+};
+function getVIPPrice(basePrice){
+  return isVIP ? Math.round(basePrice*(1-VIP_DISCOUNT)) : basePrice;
+}
+function initVIPBadge(){
+  document.getElementById('vip-hud-badge').style.display=isVIP?'block':'none';
+}
+initVIPBadge();
 let equippedSkins = JSON.parse(localStorage.getItem('apexEquipped')||'{}');
 // e.g. equippedSkins = {pistol:'gold', rifle:'fire'}
 
@@ -4097,40 +4144,77 @@ function renderShop(){
     SKINS.forEach(skin=>{
       const owned=ownedSkins.includes(skin.id);
       const equipped=curEq===skin.id;
-      const cantAfford=ap<skin.price&&skin.price>0&&!owned;
+      const finalPrice=getVIPPrice(skin.price);
+      const cantAfford=ap<finalPrice&&skin.price>0&&!owned;
       const rc=RARITY_COLOR[skin.rarity];
       const div=document.createElement('div');
       div.className='sitem'+(equipped?' owned':cantAfford?' cant-afford':'');
       div.style.borderColor=equipped?rc:'#1a3a5a';
-      // Renk önizleme
       const preview=`<div style="width:100%;height:32px;background:linear-gradient(135deg,#${skin.color.toString(16).padStart(6,'0')} 0%,#${skin.barrel.toString(16).padStart(6,'0')} 100%);border-radius:3px;margin-bottom:6px;${skin.glow?'box-shadow:0 0 8px #'+skin.glow.toString(16).padStart(6,'0')+'88':''}"></div>`;
+      const priceHtml=skin.price===0?'<div class="sprice free">BEDAVA</div>'
+        :isVIP&&skin.price>0&&!owned?
+          `<div class="old-price">${skin.price} ◆ AP</div><div class="sprice" style="color:#ffd700">${finalPrice} ◆ AP <span style="font-size:.55rem;background:#ffd700;color:#000;padding:1px 4px;border-radius:2px;font-weight:900">VIP -30%</span></div>`
+        :`<div class="sprice" style="color:${rc}">${skin.price} ◆ AP</div>`;
       div.innerHTML=
+        (isVIP&&skin.price>0?'<div class="vip-badge">✦VIP</div>':'')+
         preview+
         `<div style="font-size:.6rem;color:${rc};letter-spacing:2px;margin-bottom:2px">${RARITY_LABEL[skin.rarity]}</div>`+
         `<div class="sname" style="color:${rc}">${skin.name}</div>`+
         `<div class="sdesc">${skin.desc}</div>`+
-        (equipped
-          ? `<div class="sprice free">✅ AKTIF</div>`
-          : owned
-            ? `<div class="sprice free">SATİN ALINDI</div>`
-            : `<div class="sprice" style="color:${rc}">${skin.price===0?'BEDAVA':skin.price+' ◆ AP'}</div>`);
+        (equipped?'<div class="sprice free">✅ AKTİF</div>':owned?'<div class="sprice free">SATİN ALINDI</div>':priceHtml);
       if(!cantAfford){
         div.onclick=()=>{
           if(!owned){
-            if(skin.price>0&&ap<skin.price)return;
-            ap-=skin.price; saveAP();
+            if(finalPrice>0&&ap<finalPrice)return;
+            ap-=finalPrice; saveAP();
             ownedSkins.push(skin.id);
           }
           equippedSkins[shopSelectedWpn]=skin.id;
           saveSkins();
           applySkinToWpn(shopSelectedWpn);
           const msg=document.getElementById('shop-msg');
-          msg.textContent='✅ '+skin.name+' deseni aktif!';
+          msg.textContent='✅ '+skin.name+' deseni aktif!'+(isVIP?' (✦ VIP indirimli)':'');
           renderShop();
         };
       }
       grid.appendChild(div);
     });
+    return;
+  }
+
+  if(currentTab==='vip'){
+    grid.style.gridTemplateColumns='1fr';
+    const panel=document.createElement('div');
+    panel.id='vip-panel';
+    if(isVIP){
+      panel.innerHTML=`
+        <div class="vip-card">
+          <div class="vip-crown">👑</div>
+          <div class="vip-title">VIP AKTİF</div>
+          <div class="vip-sub">Ayrıcalıkların aktif!</div>
+          <ul class="vip-perks">
+            <li>Tüm desenlerde <strong>%30 indirim</strong></li>
+            <li>VIP rozeti HUD ve shopda görünür</li>
+            <li>Gelecekteki VIP özelliklere öncelikli erişim</li>
+          </ul>
+          <div class="vip-active-banner">✦ VIP Üyeliğin aktif — Desenler %30 indirimli!</div>
+        </div>`;
+    }else{
+      panel.innerHTML=`
+        <div class="vip-card">
+          <div class="vip-crown">👑</div>
+          <div class="vip-title">APEX VIP</div>
+          <div class="vip-sub">Tek seferlik satın al</div>
+          <ul class="vip-perks">
+            <li>Tüm desenlerde <strong>%30 indirim</strong></li>
+            <li>VIP rozeti HUD ve shopda görünür</li>
+            <li>Gelecekteki VIP özelliklere öncelikli erişim</li>
+          </ul>
+          <button class="vip-buy-btn" onclick="buyVIP()">SATİN AL — ₺${VIP_PRICE_TL}</button>
+        </div>
+        <div style="font-size:.65rem;color:#445;text-align:center;max-width:360px">Simüle edilmiş ödeme — Gerçek para alınmaz.</div>`;
+    }
+    grid.appendChild(panel);
     return;
   }
 
