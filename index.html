@@ -24,6 +24,7 @@ canvas{display:block}
 #hpf{background:linear-gradient(90deg,#00cc55,#00ff88);box-shadow:0 0 8px #00ff8866;width:100%}
 #shf{background:linear-gradient(90deg,#0066ff,#00aaff);box-shadow:0 0 8px #00aaff66;width:100%}
 #grns{font-size:13px;color:#88ff00;margin-top:6px}
+#trps{font-size:13px;color:#ff6600;margin-top:3px;text-shadow:0 0 8px #ff660088}
 /* weapon HUD — neon sci-fi */
 #wh{position:absolute;bottom:60px;right:20px;text-align:right;min-width:260px}
 #wn{font-size:17px;color:#00ffff;font-weight:bold;letter-spacing:2px;text-shadow:0 0 12px #00ffff88}
@@ -419,6 +420,7 @@ canvas{display:block}
     <div class="bl">❤ HP</div>
     <div class="bw"><div class="bf" id="hpf"></div></div>
     <div id="grns">💣 x3</div>
+    <div id="trps">🪤 x2 [X]</div>
   </div>
   <div id="stam"><div id="stamf"></div></div>
   <div id="wh">
@@ -1847,7 +1849,7 @@ function buildWpnMesh(key){
 // ══════════════════════════════════════════════
 let px=0,py=1.72,pz=0,pvy=0,onGround=true;
 let yaw=0,pitch=0,locked=false,gameRunning=false;
-let hp=100,shield=60,shieldT=0,grens=3,grenCd=0;
+let hp=100,shield=60,shieldT=0,grens=3,grenCd=0,trapMines=2,trapCd=0;
 let pscore=0,pkills=0;
 let ads=false,adsFovCur=80;
 let crouching=false;
@@ -1983,7 +1985,7 @@ function spawnWave(n){
 // ══════════════════════════════════════════════
 //  PROJECTILES, FX, BULLET HOLES
 // ══════════════════════════════════════════════
-let ebullets=[],pickups=[],grenadeList=[],sparks=[];
+let ebullets=[],pickups=[],grenadeList=[],trapList=[],sparks=[];
 let bulletHoles=[];
 const MAX_HOLES=35;
 const RAY=new THREE.Raycaster();
@@ -2262,7 +2264,7 @@ function handleServerMsg(data){
       break;
     case 'roundStart':
       // Respawn
-      hp=100;shield=60;grens=3;
+      hp=100;shield=60;grens=3;trapMines=2;
       if(document.getElementById('round-result').style.display!=='none'){
         document.getElementById('round-result').style.display='none';
       }
@@ -2388,6 +2390,7 @@ window.addEventListener('keydown',e=>{
   if(!gameRunning)return;
   if(e.code==='KeyR')doReload();
   if(e.code==='KeyQ')doGrenade();
+  if(e.code==='KeyX')placeTrap();
   if(e.code==='KeyF')tryPickup();
   if(e.code==='Digit1')setWpn(0);if(e.code==='Digit2')setWpn(1);
   if(e.code==='Digit3')setWpn(2);if(e.code==='Digit4')setWpn(3);if(e.code==='Digit5')setWpn(4);
@@ -2692,6 +2695,32 @@ function _doSetWpn(i){
   drawAnim=true;drawAnimT=0;
 }
 
+function placeTrap(){
+  if(trapMines<=0||trapCd>0)return;
+  trapMines--;trapCd=90;
+  // Create visual: flat cylinder base + blinking red dome
+  const base=new THREE.Mesh(
+    new THREE.CylinderGeometry(.22,.28,.06,8),
+    new THREE.MeshStandardMaterial({color:0x222222,roughness:.8})
+  );
+  const dome=new THREE.Mesh(
+    new THREE.SphereGeometry(.14,8,5,0,Math.PI*2,0,Math.PI*.55),
+    new THREE.MeshStandardMaterial({color:0x111111,roughness:.7})
+  );
+  dome.position.y=.06;
+  const light=new THREE.Mesh(
+    new THREE.SphereGeometry(.04,5,4),
+    new THREE.MeshStandardMaterial({color:0xff2200,emissive:0xff2200,emissiveIntensity:3})
+  );
+  light.position.y=.12;
+  const grp=new THREE.Group();
+  grp.add(base);grp.add(dome);grp.add(light);
+  grp.position.set(px,.04,pz);
+  scene.add(grp);
+  trapList.push({m:grp,lightMesh:light,x:px,z:pz,triggered:false,triggerT:0,blinkT:0});
+  showMsg('🪤 TUZAK KURULDU','#FF6600');
+}
+
 function doGrenade(){
   if(grens<=0||grenCd>0)return;
   grens--;grenCd=130;
@@ -2816,6 +2845,7 @@ function updPlayer(dt){
   // Cooldowns
   if(fireCd>0)fireCd-=dt*60;
   if(grenCd>0)grenCd-=dt*60;
+  if(trapCd>0)trapCd-=dt*60;
   const recoilRecovery=crouching?7:ads?6:5;
   recoil=Math.max(0,recoil-dt*recoilRecovery);recoilY*=.88;
   // Reset recoil pattern when not firing
@@ -3141,6 +3171,52 @@ function updEBullets(dt){
   }
 }
 
+function updTraps(dt){
+  for(let i=trapList.length-1;i>=0;i--){
+    const t=trapList[i];
+    // Blink light
+    t.blinkT+=dt;
+    const blinkRate=t.triggered?8:1.2;
+    t.lightMesh.material.emissiveIntensity=2.5+2.5*Math.sin(t.blinkT*blinkRate*Math.PI*2);
+    if(!t.triggered){
+      // Check proximity of enemies
+      for(const e of enemies){
+        if(!e.alive)continue;
+        if(Math.hypot(e.x-t.x,e.z-t.z)<2.0){
+          t.triggered=true;
+          t.lightMesh.material.color.setHex(0xff0000);
+          t.lightMesh.material.emissive.setHex(0xff0000);
+          showMsg('⚠️ TUZAK TETİKLENDİ!','#FF2200');
+          break;
+        }
+      }
+    }else{
+      t.triggerT+=dt;
+      if(t.triggerT>=.6){
+        // BOOM
+        spawnSparks(new THREE.Vector3(t.x,.1,t.z),40,0xff4400);
+        playExplosion();
+        doScreenShake(6);
+        // Damage enemies in radius 7
+        for(const e of enemies){
+          if(!e.alive)continue;
+          const d=Math.hypot(e.x-t.x,e.z-t.z);
+          if(d<7){e.hp-=130*(1-d/7);if(e.hp<=0)killEnemy(e,false);}
+        }
+        // Damage player if close
+        const dp=Math.hypot(px-t.x,pz-t.z);
+        if(dp<5){
+          const dmg=28*(1-dp/5);
+          if(shield>0){const s=Math.min(dmg,shield);shield-=s;hp-=Math.max(0,dmg-s);}else hp-=dmg;
+          document.getElementById('dmgfx').style.background='rgba(255,100,0,.5)';
+          dmgEnd=Date.now()+300;
+        }
+        scene.remove(t.m);trapList.splice(i,1);
+      }
+    }
+  }
+}
+
 function updGrenades(dt){
   for(let i=grenadeList.length-1;i>=0;i--){
     const g=grenadeList[i];
@@ -3279,6 +3355,7 @@ function updHUD(){
   hpf.style.background=hp>50?'linear-gradient(90deg,#00aa55,#00ff88)':hp>25?'linear-gradient(90deg,#aa6600,#ffaa00)':'linear-gradient(90deg,#aa0000,#ff2200)';
   document.getElementById('shf').style.width=(Math.max(0,shield)/60*100)+'%';
   document.getElementById('grns').textContent='💣 x'+grens;
+  document.getElementById('trps').textContent='🪤 x'+trapMines+' [X]';
   document.getElementById('stamf').style.width=stamina+'%';
 
   const d=WEAPONS[curWpn];
@@ -3360,9 +3437,9 @@ function gameOver(){
 }
 
 function clearAll(){
-  [...enemies,...ebullets,...pickups,...grenadeList,...sparks].forEach(o=>{const m=o.mesh||o.m;if(m)scene.remove(m);});
+  [...enemies,...ebullets,...pickups,...grenadeList,...trapList,...sparks].forEach(o=>{const m=o.mesh||o.m||o.m;if(m)scene.remove(m);});
   bulletHoles.forEach(m=>scene.remove(m));
-  enemies=[];ebullets=[];pickups=[];grenadeList=[];sparks=[];bulletHoles=[];
+  enemies=[];ebullets=[];pickups=[];grenadeList=[];trapList=[];sparks=[];bulletHoles=[];
 }
 
 // ══════════════════════════════════════════════
@@ -3610,6 +3687,8 @@ const SHOP_ITEMS={
     {id:'shield_kit',  icon:'🛡️', name:'Kalkan Kiti', desc:'+60 Shield',      price:200, type:'shield', amt:60},
     {id:'grenade_x1',  icon:'💣',name:'El Bomba x1',desc:'+1 el bomba',    price:100, type:'grenade', amt:1},
     {id:'grenade_x3',  icon:'💥',name:'El Bomba x3',desc:'+3 el bomba',    price:250, type:'grenade', amt:3},
+    {id:'trap_x1',     icon:'🪤',name:'Tuzak Bomba x1',desc:'+1 tuzak kurulu bomba [X]',price:150, type:'trap',    amt:1},
+    {id:'trap_x3',     icon:'💥',name:'Tuzak Bomba x3',desc:'+3 tuzak kurulu bomba [X]',price:380, type:'trap',    amt:3},
     {id:'ammo_all',    icon:'⚡', name:'Tam Mermi',  desc:'Tüm ammo doldur',price:400, type:'ammo_all'},
   ],
 };
@@ -3742,6 +3821,9 @@ function buyItem(item){
   } else if(item.type==='grenade'){
     grens+=item.amt;
     msg.textContent='✅ +'+item.amt+' el bomba!';
+  } else if(item.type==='trap'){
+    trapMines+=item.amt;
+    msg.textContent='✅ +'+item.amt+' tuzak bomba! [X ile kur]';
   } else if(item.type==='ammo_all'){
     res.light+=60;res.heavy+=60;res.shell+=24;res.sniper+=10;
     msg.textContent='✅ Tüm mermiler dolduruldu!';
@@ -3766,7 +3848,7 @@ window.startGame=function(skipOverlay){
   }
   clearAll();
   px=0;py=EYE;pz=0;pvy=0;onGround=true;
-  yaw=0;pitch=0;hp=100;shield=60;shieldT=0;grens=3;grenCd=0;
+  yaw=0;pitch=0;hp=100;shield=60;shieldT=0;grens=3;grenCd=0;trapMines=2;trapCd=0;
   pscore=0;pkills=0;fireCd=0;recoil=0;recoilY=0;reloading=false;
   ads=false;adsFovCur=80;stamina=100;bobT=0;bobX=0;bobY=0;
   wpnList=['pistol','knife','ak47','m416'];wpnIdx=0;curWpn='pistol';
@@ -3804,7 +3886,7 @@ function loop(ts){
     updOtherPlayers(dt);
     updRoundResult(dt);
     updEBullets(dt);
-    updGrenades(dt);updSparks(dt);updCasings(dt);updSmoke(dt);updPickups(dt);updWave();updHUD();
+    updGrenades(dt);updTraps(dt);updSparks(dt);updCasings(dt);updSmoke(dt);updPickups(dt);updWave();updHUD();
     updEnemyHealthBars();
     updNameTags();
     if(audioCtx&&!ambientStarted)startAmbient();
